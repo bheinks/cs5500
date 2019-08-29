@@ -29,15 +29,16 @@ KEYWORDS = {
 
 # Token pattern specification
 TOKEN_SPEC = (
-    ('T_INTCONST',    r'\d+'),          # Integer constants
-    ('T_CHARCONST',   r"'.'"),          # Character constants
-    ('T_IDENT',       r'[A-Za-z_]\w*'), # Identifiers
-    ('T_DOTDOT',      r'\.\.'),         # Begin operators
+    ('COMMENT',       r'\(\*(.|[\r\n])*?\*\)'), # Comments
+    ('T_INTCONST',    r'\d+'),                  # Integer constants
+    ('T_CHARCONST',   r"'.'"),                  # Character constants
+    ('T_IDENT',       r'[A-Za-z_]\w*'),         # Identifiers
+    ('T_DOTDOT',      r'\.\.'),                 # Begin operators
     ('T_ASSIGN',      r':='),
     ('T_LE',          r'<='),
     ('T_NE',          r'<>'),
     ('T_GE',          r'>='),
-    ('T_LPAREN',      r'\('),              
+    ('T_LPAREN',      r'\('),
     ('T_RPAREN',      r'\)'),
     ('T_MULT',        r'\*'),
     ('T_PLUS',        r'\+'),
@@ -50,11 +51,56 @@ TOKEN_SPEC = (
     ('T_EQ',          r'='),
     ('T_GT',          r'>'),
     ('T_LBRACK',      r'\['),
-    ('T_RBRACK',      r']'),            # End operators
-    ('INVALIDCHAR',   r"''"),           # Invalid character constant
-    ('WHITESPACE',    r'[ \t\r\n]+'),   # Whitespace
-    ('UNKNOWN',       r'.'),            # Everything else
+    ('T_RBRACK',      r']'),                    # End operators
+    ('EMPTYCHAR',     r"''"),                   # Empty character constant
+    ('NEWLINE',       r'\r\n|\n'),              # Line endings
+    ('WHITESPACE',    r'[ \t]+'),               # Whitespace
+    ('UNKNOWN',       r'.'),                    # Everything else
 )
+
+
+class Lexer:
+    def __init__(self, program):
+        self.program = program
+        self.line_num = 1
+
+    def __iter__(self):
+        # Build token regex
+        token_regex = '|'.join(f'(?P<{token}>{pattern})' for token, pattern in TOKEN_SPEC)
+
+        # Loop over every match and yield resulting token
+        for match in re.finditer(token_regex, self.program, flags=re.ASCII):
+            token = match.lastgroup
+            lexeme = match.group()
+
+            # Comments
+            if token == 'COMMENT':
+                self.line_num += len(lexeme.splitlines())-1
+                continue
+            # Integer constants
+            elif token == 'T_INTCONST':
+                if not valid_integer(lexeme):
+                    print(f'**** Invalid integer constant: {lexeme}')
+                    continue
+            # Identifiers
+            elif token == 'T_IDENT' and lexeme in KEYWORDS:
+                token = KEYWORDS[lexeme]
+            # Newline
+            elif token == 'NEWLINE':
+                self.line_num += 1
+                continue
+            # Whitespace
+            elif token == 'WHITESPACE':
+                continue
+            # Invalid character constants
+            elif token == 'EMPTYCHAR' or (token == 'UNKNOWN' and lexeme.startswith("'")):
+                print(f'**** Invalid character constant: {lexeme}')
+                continue
+
+            # Print token info
+            print_token(token, lexeme)
+
+            yield token
 
 
 def valid_integer(intconst):
@@ -64,37 +110,3 @@ def valid_integer(intconst):
 
 def print_token(token, lexeme):
     print(f'TOKEN: {token:<12}LEXEME: {lexeme}')
-
-
-def get_token(input_file):
-    # Strip out all comments
-    input_file = re.sub('\(\*.*?\*\)', '', input_file, flags=re.DOTALL)
-
-    # Build token regex
-    token_regex = '|'.join(f'(?P<{token}>{pattern})' for token, pattern in TOKEN_SPEC)
-
-    # Loop over every match
-    for match in re.finditer(token_regex, input_file, flags=re.ASCII):
-        token = match.lastgroup
-        lexeme = match.group()
-
-        # Integer constants
-        if token == 'T_INTCONST':
-            if not valid_integer(lexeme):
-                print(f'**** Invalid integer constant: {lexeme}')
-                continue
-        # Identifiers
-        elif token == 'T_IDENT' and lexeme in KEYWORDS:
-            token = KEYWORDS[lexeme]
-        # Whitespace
-        elif token == 'WHITESPACE':
-            continue
-        # Invalid character constants
-        elif token == 'INVALIDCHAR' or (token == 'UNKNOWN' and lexeme.startswith("'")):
-            print(f'**** Invalid character constant: {lexeme}')
-            continue
-
-        # Print token info
-        print_token(token, lexeme)
-
-        yield lexeme
