@@ -1,2 +1,2 @@
 main:
-	./main.py input.txt
+	./parser.py input.txt
