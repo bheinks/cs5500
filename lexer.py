@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-
 import re
-import sys
-
-# Set True to disable console output, False otherwise
-SUPPRESS_OUTPUT = False
 
 # Reserved words
 KEYWORDS = {
@@ -63,52 +57,44 @@ TOKEN_SPEC = (
 )
 
 
-def print_token(token, lexeme):
-    print(f'TOKEN: {token:<12}LEXEME: {lexeme}')
-
-
 def valid_integer(intconst):
     # Python supports arbitrarily large integers, so there's no chance of overflow
     return int(intconst) <= 2147483647
 
 
-def main(input_filename):
-    if SUPPRESS_OUTPUT:
-        sys.stdout = None
+def print_token(token, lexeme):
+    print(f'TOKEN: {token:<12}LEXEME: {lexeme}')
 
-    with open(input_filename) as f:
-        input_file = f.read()
 
-        # Strip out all comments
-        input_file = re.sub('\(\*.*?\*\)', '', input_file, flags=re.DOTALL)
+def get_token(input_file):
+    # Strip out all comments
+    input_file = re.sub('\(\*.*?\*\)', '', input_file, flags=re.DOTALL)
 
-        # Build token regex
-        token_regex = '|'.join(f'(?P<{token}>{pattern})' for token, pattern in TOKEN_SPEC)
+    # Build token regex
+    token_regex = '|'.join(f'(?P<{token}>{pattern})' for token, pattern in TOKEN_SPEC)
 
-        # Loop over every match
-        for match in re.finditer(token_regex, input_file, flags=re.ASCII):
-            token = match.lastgroup
-            lexeme = match.group()
+    # Loop over every match
+    for match in re.finditer(token_regex, input_file, flags=re.ASCII):
+        token = match.lastgroup
+        lexeme = match.group()
 
-            # Integer constants
-            if token == 'T_INTCONST':
-                if not valid_integer(lexeme):
-                    print(f'**** Invalid integer constant: {lexeme}')
-                    continue
-            # Identifiers
-            elif token == 'T_IDENT' and lexeme in KEYWORDS:
-                token = KEYWORDS[lexeme]
-            # Whitespace
-            elif token == 'WHITESPACE':
+        # Integer constants
+        if token == 'T_INTCONST':
+            if not valid_integer(lexeme):
+                print(f'**** Invalid integer constant: {lexeme}')
                 continue
-            # Invalid character constants
-            elif token == 'INVALIDCHAR' or (token == 'UNKNOWN' and lexeme.startswith("'")):
-                print(f'**** Invalid character constant: {lexeme}')
-                continue
+        # Identifiers
+        elif token == 'T_IDENT' and lexeme in KEYWORDS:
+            token = KEYWORDS[lexeme]
+        # Whitespace
+        elif token == 'WHITESPACE':
+            continue
+        # Invalid character constants
+        elif token == 'INVALIDCHAR' or (token == 'UNKNOWN' and lexeme.startswith("'")):
+            print(f'**** Invalid character constant: {lexeme}')
+            continue
 
-            # Print token info
-            print_token(token, lexeme)
+        # Print token info
+        print_token(token, lexeme)
 
-
-if __name__ == '__main__':
-    main(sys.argv[1])
+        yield lexeme
