@@ -62,7 +62,7 @@ TOKEN_SPEC = (
 class Lexer:
     def __init__(self, program):
         self.program = program
-        self.line_num = 1
+        self.line_no = 1
         self.tokens = self.get_tokens()
 
     def get_tokens(self):
@@ -76,7 +76,7 @@ class Lexer:
 
             # Comments
             if token == 'COMMENT':
-                self.line_num += len(lexeme.splitlines())-1
+                self.line_no += len(lexeme.splitlines())-1
                 continue
             # Integer constants
             elif token == 'T_INTCONST':
@@ -88,7 +88,7 @@ class Lexer:
                 token = KEYWORDS[lexeme]
             # Newline
             elif token == 'NEWLINE':
-                self.line_num += 1
+                self.line_no += 1
                 continue
             # Whitespace
             elif token == 'WHITESPACE':
