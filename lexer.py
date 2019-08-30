@@ -64,6 +64,7 @@ class Lexer:
         self.program = program
         self.line_no = 1
         self.tokens = self.get_tokens()
+        self.current = None
 
     def get_tokens(self):
         # Build token regex
@@ -101,6 +102,7 @@ class Lexer:
             # Print token info
             print_token(token, lexeme)
 
+            self.current = token
             yield token
 
 

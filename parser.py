@@ -71,7 +71,8 @@ def n_block(lexer):
 
 
 def n_var_dec_part(lexer):
-    if next(lexer.tokens) == 'T_VAR':
+    # TODO
+    if lexer.current == 'T_VAR':
         n_var_dec(lexer)
 
         if next(lexer.tokens) != 'T_SCOLON':
@@ -89,10 +90,12 @@ def n_var_dec_lst(lexer):
 
 
 def n_var_dec(lexer):
-    ident(lexer)
-    ident_list(lexer)
+    n_ident(lexer)
+    n_ident_lst(lexer)
 
-    if next(lexer.tokens) != 'T_COLON':
+    token = next(lexer.tokens)
+    if token != 'T_COLON':
+        print('error here: ' + token)
         error(lexer.line_no)
 
     n_type(lexer)
@@ -108,7 +111,13 @@ def n_ident(lexer):
 
 
 def n_ident_lst(lexer):
-    pass
+    if lexer.current == 'T_COMMA':
+        n_ident(lexer)
+        n_ident_lst(lexer)
+
+        print_rule('N_IDENTLST', 'T_COMMA N_IDENT N_IDENTLIST')
+    else:
+        print_rule('N_IDENTLST', 'epsilon')
 
 
 def n_type(lexer):
@@ -116,11 +125,27 @@ def n_type(lexer):
 
 
 def n_array(lexer):
-    pass
+    if next(lexer.tokens) != 'T_ARRAY':
+        error(lexer.line_no)
+
+    if next(lexer.tokens) != 'T_LBRACK':
+        error(lexer.line_no)
+
+    n_idx_range(lexer)
+
+    if next(lexer.tokens) != 'T_RBRACK':
+        error(lexer.line_no)
+
+    if next(lexer.tokens) != 'T_OF':
+        error(lexer.line_no)
+
+    n_simple(lexer)
+
+    print_rule('N_ARRAY', 'T_ARRAY T_LBRACK N_IDXRANGE T_RBRACK T_OF N_SIMPLE')
 
 
 def n_idx(lexer):
-    pass
+    int_const(lexer)
 
 
 def n_idx_range(lexer):
@@ -128,7 +153,12 @@ def n_idx_range(lexer):
 
 
 def n_simple(lexer):
-    pass
+    token = next(lexer.tokens)
+
+    if token not in ('T_INT', 'T_CHAR', 'T_BOOL'):
+        error(lexer.line_no)
+
+    print_rule('N_SIMPLE', token)
 
 
 def n_proc_dec_part(lexer):
