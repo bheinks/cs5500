@@ -63,8 +63,9 @@ class Lexer:
     def __init__(self, program):
         self.program = program
         self.line_num = 1
+        self.tokens = self.get_tokens()
 
-    def __iter__(self):
+    def get_tokens(self):
         # Build token regex
         token_regex = '|'.join(f'(?P<{token}>{pattern})' for token, pattern in TOKEN_SPEC)
 

@@ -13,33 +13,76 @@ def main(input_filename):
     if SUPPRESS_OUTPUT:
         sys.stdout = None
 
-    # TODO: fix this iter nonsense so I can pull line_num as an attr
     with open(input_filename) as f:
-        tokens = iter(Lexer(f.read()))
+        lexer = Lexer(f.read())
 
-    for _ in tokens:
-        pass
-    #start(tokens)
-    print("\n---- Completed parsing ----")
+    n_start(lexer)
+    print('\n---- Completed parsing ----')
 
 
 def print_rule(lhs, rhs):
-    print(f"{lhs} -> {rhs}")
+    print(f'{lhs} -> {rhs}')
 
 
-def start(tokens):
-    prog(tokens)
-    print_rule("N_START", "N_PROG")
-    
-
-def prog(tokens):
-    prog_lbl(tokens)
-    print_rule("N_PROG", "N_PROGLBL T_IDENT T_SCOLON N_BLOCK T_DOT")
+def error(line_no):
+    print(f'Line {line_no}: syntax error')
+    sys.exit(1)
 
 
-def prog_lbl(tokens):
-    if next(tokens) == "T_PROG":
-        pass
+def n_start(lexer):
+    n_prog(lexer)
+    print_rule('N_START', 'N_PROG')
+
+
+def n_prog(lexer):
+    n_prog_lbl(lexer)
+
+    if next(lexer.tokens) != 'T_IDENT':
+        error(lexer.line_no)
+
+    if next(lexer.tokens) != 'T_SCOLON':
+        error(lexer.line_no)
+
+    n_block(lexer)
+
+    if next(lexer.tokens) != 'T_DOT':
+        error(lexer.line_no)
+
+    print_rule('N_PROG', 'N_PROGLBL T_IDENT T_SCOLON N_BLOCK T_DOT')
+
+
+def n_prog_lbl(lexer):
+    if next(lexer.tokens) != 'T_PROG':
+        error(lexer.line_no)
+
+
+def n_block(lexer):
+    n_var_dec_part(lexer)
+    n_proc_dec_part(lexer)
+    n_stmt_part(lexer)
+
+
+def n_var_dec_part(lexer):
+    if next(lexer.tokens) == 'T_VAR':
+        n_var_dec(lexer)
+
+
+def n_var_dec(lexer):
+    ident(lexer)
+    ident_list(lexer)
+
+    if next(lexer.tokens) != 'T_COLON':
+        error(lexer.line_no)
+
+    n_type(lexer)
+
+
+def n_proc_dec_part(lexer):
+    pass
+
+
+def n_stmt_part(lexer):
+    pass
 
 
 if __name__ == '__main__':
