@@ -36,6 +36,7 @@ class Parser:
         if self.token != 'T_PROG':
             self.error()
 
+        self.get_token()
         print_rule('N_PROGLBL', 'T_PROG')
 
     def n_prog(self):
@@ -44,14 +45,17 @@ class Parser:
         if self.token != 'T_IDENT':
             self.error()
 
+        self.get_token()
         if self.token != 'T_SCOLON':
             self.error()
 
+        self.get_token()
         self.n_block()
 
-        if next(lexer.tokens) != 'T_DOT':
+        if self.token != 'T_DOT':
             self.error()
 
+        self.get_token()
         print_rule('N_PROG', 'N_PROGLBL T_IDENT T_SCOLON N_BLOCK T_DOT')
 
     def n_block(self):
@@ -63,9 +67,10 @@ class Parser:
 
     def n_var_dec_part(self):
         if lexer.current == 'T_VAR':
+            self.get_token()
             self.n_var_dec()
 
-            if next(lexer.tokens) != 'T_SCOLON':
+            if self.token != 'T_SCOLON':
                 self.error()
 
             self.var_dec_lst()
@@ -81,7 +86,7 @@ class Parser:
         self.n_ident()
         self.n_ident_lst()
 
-        token = next(lexer.tokens)
+        token = self.token
         if token != 'T_COLON':
             print('error here: ' + token)
             self.error()
@@ -91,7 +96,7 @@ class Parser:
         print_rule('N_VARDEC', 'N_IDENT N_IDENTLIST T_COLON N_TYPE')
 
     def n_ident(self):
-        if next(lexer.tokens) != 'T_IDENT':
+        if self.token != 'T_IDENT':
             self.error()
 
         print_rule('N_IDENT', 'T_IDENT')
@@ -106,21 +111,21 @@ class Parser:
             print_rule('N_IDENTLST', 'epsilon')
 
     def n_type(self):
-        print("type: " + next(lexer.tokens))
+        print("type: " + self.token)
 
     def n_array(self):
-        if next(lexer.tokens) != 'T_ARRAY':
+        if self.token != 'T_ARRAY':
             self.error()
 
-        if next(lexer.tokens) != 'T_LBRACK':
+        if self.token != 'T_LBRACK':
             self.error()
 
         self.n_idx_range()
 
-        if next(lexer.tokens) != 'T_RBRACK':
+        if self.token != 'T_RBRACK':
             self.error()
 
-        if next(lexer.tokens) != 'T_OF':
+        if self.token != 'T_OF':
             self.error()
 
         self.n_simple()
@@ -134,7 +139,7 @@ class Parser:
         pass
 
     def n_simple(self):
-        token = next(lexer.tokens)
+        token = self.token
 
         if token not in ('T_INT', 'T_CHAR', 'T_BOOL'):
             self.error()
