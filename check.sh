@@ -13,7 +13,7 @@ EXPECTED="./expected"
 REPORTS="./reports"
 
 # The name of the executable file
-EXEC=./main.py
+EXEC=./parser.py
 
 green=`tput setaf 2`
 red=`tput setaf 1`

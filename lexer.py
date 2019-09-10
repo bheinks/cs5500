@@ -1,4 +1,5 @@
 import re
+from sys import exit
 
 # Reserved words
 KEYWORDS = {
@@ -30,7 +31,7 @@ KEYWORDS = {
 # Token pattern specification
 TOKEN_SPEC = (
     ('COMMENT',       r'\(\*(.|[\r\n])*?\*\)'), # Comments
-    ('T_INTCONST',    r'\d+'),                  # Integer constants
+    ('T_INTCONST',    r'[+-]?\d+'),             # Integer constants
     ('T_CHARCONST',   r"'.'"),                  # Character constants
     ('T_IDENT',       r'[A-Za-z_]\w*'),         # Identifiers
     ('T_DOTDOT',      r'\.\.'),                 # Begin operators
@@ -82,7 +83,7 @@ class Lexer:
             elif token == 'T_INTCONST':
                 if not valid_integer(lexeme):
                     print(f'**** Invalid integer constant: {lexeme}')
-                    continue
+                    exit(1)
             # Identifiers
             elif token == 'T_IDENT' and lexeme in KEYWORDS:
                 token = KEYWORDS[lexeme]
@@ -96,7 +97,7 @@ class Lexer:
             # Invalid character constants
             elif token == 'EMPTYCHAR' or (token == 'UNKNOWN' and lexeme.startswith("'")):
                 print(f'**** Invalid character constant: {lexeme}')
-                continue
+                exit(1)
 
             # Print token info
             print_token(token, lexeme)
@@ -110,4 +111,4 @@ def valid_integer(intconst):
 
 
 def print_token(token, lexeme):
-    print(f'TOKEN: {token:<12}LEXEME: {lexeme}')
+    print(f'TOKEN: {token}\t    LEXEME: {lexeme}')
