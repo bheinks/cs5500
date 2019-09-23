@@ -1,6 +1,9 @@
 import re
 from sys import exit
 
+# Print debug output if true
+DEBUG = False
+
 # Reserved words
 KEYWORDS = {
     'and':      'T_AND',
@@ -102,7 +105,7 @@ class Lexer:
             # Print token info
             print_token(token, lexeme)
 
-            yield token
+            yield token, lexeme
 
 
 def valid_integer(intconst):
@@ -111,4 +114,5 @@ def valid_integer(intconst):
 
 
 def print_token(token, lexeme):
-    print(f'TOKEN: {token}\t    LEXEME: {lexeme}')
+    if DEBUG:
+        print(f'TOKEN: {token}\t    LEXEME: {lexeme}')

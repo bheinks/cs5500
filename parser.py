@@ -1,28 +1,48 @@
 #!/usr/bin/env python3
 
 import sys
-import inspect
 
 # Local imports
 from lexer import Lexer
+from symboltable import SymbolTable
 
-# Set True to disable console output, False otherwise
-SUPPRESS_OUTPUT = False
-
+# Print debug output if true
+DEBUG = False
 
 class Parser:
     def __init__(self, lexer):
-        self.lexer = lexer
+        self.lexer = lexer      # Lexer instance
+        self.scopes = []        # Stack of symbol tables
+        self.temp_idents = []   # List of idents waiting to be added to symbol table
 
     def get_token(self):
         try:
-            self.token = next(self.lexer.tokens)
+            self.token, self.lexeme = next(self.lexer.tokens)
         except StopIteration:
             self.token = None
+            self.lexeme = None
 
-    def error(self):
-        print(f'Line {self.lexer.line_no}: syntax error')
+    def error(self, message):
+        print(f'Line {self.lexer.line_no}: {message}')
         sys.exit(1)
+
+    def open_scope(self):
+        print('\n\n>>> Entering new scope...')
+        self.scopes.append(SymbolTable())
+
+    def close_scope(self):
+        print('\n<<< Exiting scope...')
+        self.scopes.pop()
+
+    def new_id(self, name, var_type, bounds=None, base_type=None):
+        # If identifier doesn't exist in current scope, add it
+        if not self.scopes[-1].add(name, var_type, bounds, base_type):
+            self.error('Multiply defined identifier')
+
+    def search_id(self, ident):
+        # Verify that identifier exists in scope
+        if not any(ident in scope for scope in reversed(self.scopes)):
+            self.error('Undefined identifier')
 
     def n_prog_lbl(self):
         print_rule('N_PROGLBL', 'T_PROG')
@@ -30,14 +50,18 @@ class Parser:
         if self.token == 'T_PROG':
             self.get_token()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_prog(self):
         print_rule('N_PROG', 'N_PROGLBL T_IDENT T_SCOLON N_BLOCK T_DOT')
 
         self.n_prog_lbl()
 
+        # Open global scope
+        self.open_scope()
+
         if self.token == 'T_IDENT':
+            self.new_id(self.lexeme, 'PROGRAM')
             self.get_token()
             if self.token == 'T_SCOLON':
                 self.get_token()
@@ -50,11 +74,11 @@ class Parser:
                         print('Syntax error: unexpected chars at end of program!')
                         sys.exit(1)
                 else:
-                    self.error()
+                    self.error('syntax error')
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_block(self):
         print_rule('N_BLOCK', 'N_VARDECPART N_PROCDECPART N_STMTPART')
@@ -62,6 +86,8 @@ class Parser:
         self.n_var_dec_part()
         self.n_proc_dec_part()
         self.n_stmt_part()
+
+        self.close_scope()
 
     def n_var_dec_part(self):
         if self.token == 'T_VAR':
@@ -74,7 +100,7 @@ class Parser:
                 self.get_token()
                 self.n_var_dec_lst()
             else:
-                self.error()
+                self.error('syntax error')
         else:
             print_rule('N_VARDECPART', 'epsilon')
 
@@ -87,49 +113,69 @@ class Parser:
                 self.get_token()
                 self.n_var_dec_lst()
             else:
-                self.error()
+                self.error('syntax error')
         else:
             print_rule('N_VARDECLST', 'epsilon')
 
     def n_var_dec(self):
         print_rule('N_VARDEC', 'N_IDENT N_IDENTLST T_COLON N_TYPE')
 
-        self.n_ident()
+        # Append first identifier to temporary list
+        self.temp_idents.append(self.n_ident())
         self.n_ident_lst()
 
         if self.token == 'T_COLON':
             self.get_token()
-            self.n_type()
+            var_type, bounds, base_type = self.n_type()
+
+            # Add all identifiers to scope
+            for ident in self.temp_idents:
+                self.new_id(ident, var_type, bounds, base_type)
+
+            # Reset temporary list of identifiers
+            self.temp_idents = []
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_ident(self):
         print_rule('N_IDENT', 'T_IDENT')
 
         if self.token == 'T_IDENT':
+            name = self.lexeme
             self.get_token()
+
+            return name
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_ident_lst(self):
         if self.token == 'T_COMMA':
             print_rule('N_IDENTLST', 'T_COMMA N_IDENT N_IDENTLST')
 
             self.get_token()
-            self.n_ident()
+
+            # Add additional identifiers to temporary list
+            self.temp_idents.append(self.n_ident())
+
             self.n_ident_lst()
         else:
             print_rule('N_IDENTLST', 'epsilon')
 
     def n_type(self):
+        bounds = None
+        base_type = None
+
         if self.token in ('T_INT', 'T_CHAR', 'T_BOOL'):
             print_rule('N_TYPE', 'N_SIMPLE')
-            self.n_simple()
+            var_type = self.n_simple()
         elif self.token == 'T_ARRAY':
             print_rule('N_TYPE', 'N_ARRAY')
-            self.n_array()
+            var_type = 'ARRAY'
+            bounds, base_type = self.n_array()
         else:
-            self.error()
+            self.error('syntax error')
+
+        return var_type, bounds, base_type
 
     def n_array(self):
         print_rule('N_ARRAY', 'T_ARRAY T_LBRACK N_IDXRANGE T_RBRACK T_OF N_SIMPLE')
@@ -139,49 +185,59 @@ class Parser:
 
             if self.token == 'T_LBRACK':
                 self.get_token()
-                self.n_idx_range()
+                bounds = self.n_idx_range()
 
                 if self.token == 'T_RBRACK':
                     self.get_token()
                     
                     if self.token == 'T_OF':
                         self.get_token()
-                        self.n_simple()
+                        base_type = self.n_simple()
+
+                        return bounds, base_type
                     else:
-                        self.error()
+                        self.error('syntax error')
                 else:
-                    self.error()
+                    self.error('syntax error')
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_idx(self):
         print_rule('N_IDX', 'T_INTCONST')
 
         if self.token == 'T_INTCONST':
+            bound = self.lexeme
             self.get_token()
+
+            return bound
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_idx_range(self):
         print_rule('N_IDXRANGE', 'N_IDX T_DOTDOT N_IDX')
 
-        self.n_idx()
+        left_bound = self.n_idx()
 
         if self.token == 'T_DOTDOT':
             self.get_token()
-            self.n_idx()
+            right_bound = self.n_idx()
+
+            return left_bound, right_bound
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_simple(self):
         print_rule('N_SIMPLE', self.token)
 
         if self.token in ('T_INT', 'T_CHAR', 'T_BOOL'):
+            var_type = self.lexeme.upper()
             self.get_token()
+
+            return var_type
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_proc_dec_part(self):
         if self.token == 'T_PROC':
@@ -192,7 +248,7 @@ class Parser:
                 self.get_token()
                 self.n_proc_dec_part()
             else:
-                self.error()
+                self.error('syntax error')
         else:
             print_rule('N_PROCDECPART', 'epsilon')
 
@@ -200,6 +256,7 @@ class Parser:
         print_rule('N_PROCDEC', 'N_PROCHDR N_BLOCK')
 
         self.n_proc_hdr()
+        self.open_scope()
         self.n_block()
 
     def n_proc_hdr(self):
@@ -209,16 +266,17 @@ class Parser:
             self.get_token()
 
             if self.token == 'T_IDENT':
+                self.new_id(self.lexeme, 'PROCEDURE')
                 self.get_token()
 
                 if self.token == 'T_SCOLON':
                     self.get_token()
                 else:
-                    self.error()
+                    self.error('syntax error')
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_stmt_part(self):
         print_rule('N_STMTPART', 'N_COMPOUND')
@@ -235,9 +293,9 @@ class Parser:
             if self.token == 'T_END':
                 self.get_token()
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_stmt_lst(self):
         if self.token == 'T_SCOLON':
@@ -269,7 +327,7 @@ class Parser:
             print_rule('N_STMT', 'N_COMPOUND')
             self.n_compound()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_assign(self):
         print_rule('N_ASSIGN', 'N_VARIABLE T_ASSIGN N_EXPR')
@@ -280,7 +338,7 @@ class Parser:
             self.get_token()
             self.n_expr()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_read(self):
         print_rule('N_READ', 'T_READ T_LPAREN N_INPUTVAR N_INPUTLST T_RPAREN')
@@ -296,11 +354,11 @@ class Parser:
                 if self.token == 'T_RPAREN':
                     self.get_token()
                 else:
-                    self.error()
+                    self.error('syntax error')
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_input_lst(self):
         if self.token == 'T_COMMA':
@@ -330,11 +388,11 @@ class Parser:
                 if self.token == 'T_RPAREN':
                     self.get_token()
                 else:
-                    self.error()
+                    self.error('syntax error')
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_output_lst(self):
         if self.token == 'T_COMMA':
@@ -362,9 +420,9 @@ class Parser:
                 self.n_stmt()
                 self.n_else_part()
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_else_part(self):
         if self.token == 'T_ELSE':
@@ -386,9 +444,9 @@ class Parser:
                 self.get_token()
                 self.n_stmt()
             else:
-                self.error()
+                self.error('syntax error')
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_expr(self):
         print_rule('N_EXPR', 'N_SIMPLEEXPR N_OPEXPR')
@@ -455,14 +513,14 @@ class Parser:
             if self.token == 'T_RPAREN':
                 self.get_token()
             else:
-                self.error()
+                self.error('syntax error')
         elif self.token == 'T_NOT':
             print_rule('N_FACTOR', 'T_NOT N_FACTOR')
 
             self.get_token()
             self.n_factor()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_sign(self):
         if self.token in ('T_PLUS', 'T_MINUS'):
@@ -477,7 +535,7 @@ class Parser:
         if self.token in ('T_PLUS', 'T_MINUS', 'T_OR'):
             self.get_token()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_mult_op(self):
         print_rule('N_MULTOP', self.token)
@@ -485,7 +543,7 @@ class Parser:
         if self.token in ('T_MULT', 'T_DIV', 'T_AND'):
             self.get_token()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_rel_op(self):
         print_rule('N_RELOP', self.token)
@@ -493,16 +551,19 @@ class Parser:
         if self.token in ('T_LT', 'T_LE', 'T_NE', 'T_EQ', 'T_GT', 'T_GE'):
             self.get_token()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_variable(self):
         print_rule('N_VARIABLE', 'T_IDENT N_IDXVAR')
 
         if self.token == 'T_IDENT':
+            # Check that identifier is in scope
+            self.search_id(self.lexeme)
+
             self.get_token()
             self.n_idx_var()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_idx_var(self):
         if self.token == 'T_LBRACK':
@@ -514,7 +575,7 @@ class Parser:
             if self.token == 'T_RBRACK':
                 self.get_token()
             else:
-                self.error()
+                self.error('syntax error')
         else:
             print_rule('N_IDXVAR', 'epsilon')
 
@@ -526,7 +587,7 @@ class Parser:
             print_rule('N_CONST', 'N_BOOLCONST')
             self.n_bool_const()
         else:
-            self.error()
+            self.error('syntax error')
 
     def n_bool_const(self):
         print_rule('N_BOOLCONST', self.token)
@@ -534,24 +595,22 @@ class Parser:
         if self.token in ('T_TRUE', 'T_FALSE'):
             self.get_token()
         else:
-            self.error()
+            self.error('syntax error')
 
 
 def print_rule(lhs, rhs):
-    print(f'{lhs} -> {rhs}')
+    if DEBUG:
+        print(f'{lhs} -> {rhs}')
 
 
 def main(input_filename):
-    if SUPPRESS_OUTPUT:
-        sys.stdout = None
-
     with open(input_filename) as f:
         parser = Parser(Lexer(f.read()))
 
     parser.get_token() # Initialize with first token
     parser.n_prog()
 
-    print('---- Completed parsing ----')
+    print('\n---- Completed parsing ----')
 
 
 if __name__ == '__main__':
