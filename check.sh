@@ -30,7 +30,7 @@ for f in $INPUT/*; do
     ${EXEC} "$INPUT/$filename" > "$OUTPUT/$filename.out"
 
     # run diff
-    diff -yib "$OUTPUT/$filename.out" "$EXPECTED/$filename.out" > "$REPORTS/$filename"
+    diff -yi "$OUTPUT/$filename.out" "$EXPECTED/$filename.out" > "$REPORTS/$filename"
 
     if [ $? -ne 0 ]; then
         fails=$[ $fails + 1 ]
@@ -38,7 +38,7 @@ for f in $INPUT/*; do
         head "$REPORTS/$filename"
     else
         passes=$[ $passes + 1 ]
-        echo "check: ${pass}[pass]${reset} $testname"
+        echo "check: ${green}[pass]${reset} $testname"
     fi
 done
 
