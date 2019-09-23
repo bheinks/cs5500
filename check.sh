@@ -5,12 +5,14 @@ INPUT="./input"
 
 # Where to place the actual output of running the program
 OUTPUT="./output"
+mkdir -p $OUTPUT
 
 # Where to find the expected output
 EXPECTED="./expected"
 
 # Where to place generated diffs
 REPORTS="./reports"
+mkdir -p $REPORTS
 
 # The name of the executable file
 EXEC=./parser.py
