@@ -35,8 +35,10 @@ class Parser:
         self.scopes.pop()
 
     def new_id(self, name, var_type, bounds=None, base_type=None):
+        current_scope = self.scopes[-1]
+
         # If identifier doesn't exist in current scope, add it
-        if not self.scopes[-1].add(name, var_type, bounds, base_type):
+        if not current_scope.add(name, var_type, bounds, base_type):
             self.error('Multiply defined identifier')
 
     def search_id(self, ident):
@@ -61,7 +63,9 @@ class Parser:
         self.open_scope()
 
         if self.token == 'T_IDENT':
+            # Add program to global scope
             self.new_id(self.lexeme, 'PROGRAM')
+
             self.get_token()
             if self.token == 'T_SCOLON':
                 self.get_token()
@@ -122,10 +126,13 @@ class Parser:
 
         # Append first identifier to temporary list
         self.temp_idents.append(self.n_ident())
+
         self.n_ident_lst()
 
         if self.token == 'T_COLON':
             self.get_token()
+
+            # Get variable type (and bounds and base type if array)
             var_type, bounds, base_type = self.n_type()
 
             # Add all identifiers to scope
@@ -189,7 +196,7 @@ class Parser:
 
                 if self.token == 'T_RBRACK':
                     self.get_token()
-                    
+
                     if self.token == 'T_OF':
                         self.get_token()
                         base_type = self.n_simple()
@@ -256,7 +263,10 @@ class Parser:
         print_rule('N_PROCDEC', 'N_PROCHDR N_BLOCK')
 
         self.n_proc_hdr()
+
+        # Open new scope
         self.open_scope()
+
         self.n_block()
 
     def n_proc_hdr(self):
@@ -266,7 +276,9 @@ class Parser:
             self.get_token()
 
             if self.token == 'T_IDENT':
+                # Add new procedure to current scope
                 self.new_id(self.lexeme, 'PROCEDURE')
+
                 self.get_token()
 
                 if self.token == 'T_SCOLON':
