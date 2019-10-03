@@ -27,11 +27,15 @@ class Parser:
         sys.exit(1)
 
     def open_scope(self):
-        print('\n\n>>> Entering new scope...')
+        if DEBUG:
+            print('\n\n>>> Entering new scope...')
+
         self.scopes.append(SymbolTable())
 
     def close_scope(self):
-        print('\n<<< Exiting scope...')
+        if DEBUG:
+            print('\n<<< Exiting scope...')
+
         self.scopes.pop()
 
     def new_id(self, name, var_type, bounds=None, base_type=None):
@@ -328,8 +332,16 @@ class Parser:
 
     def n_stmt(self):
         if self.token == 'T_IDENT':
-            print_rule('N_STMT', 'N_ASSIGN')
-            self.n_assign()
+            ident = self.search_id(self.lexeme)
+            if not ident:
+                self.error('Unidentified identifier')
+
+            if ident.var_type == 'PROCEDURE':
+                print_rule('N_STMT', 'N_PROCSTMT')
+                self.n_proc_stmt()
+            else:
+                print_rule('N_STMT', 'N_ASSIGN')
+                self.n_assign()
         elif self.token == 'T_READ':
             print_rule('N_STMT', 'N_READ')
             self.n_read()
@@ -356,6 +368,18 @@ class Parser:
         if self.token == 'T_ASSIGN':
             self.get_token()
             self.n_expr()
+        else:
+            self.error('syntax error')
+
+    def n_proc_stmt(self):
+        print_rule('N_PROCSTMT', 'N_PROCIDENT')
+        self.n_proc_ident()
+
+    def n_proc_ident(self):
+        print_rule('N_PROCIDENT', 'T_IDENT')
+
+        if self.token == 'T_IDENT':
+            self.get_token()
         else:
             self.error('syntax error')
 
@@ -594,9 +618,6 @@ class Parser:
         if self.token == 'T_IDENT':
             # Search for identifier in scope
             ident = self.search_id(self.lexeme)
-
-            if not ident:
-                self.error('Unidentified identifier')
 
             self.get_token()
             self.n_idx_var()

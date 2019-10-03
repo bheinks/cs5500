@@ -1,3 +1,5 @@
+DEBUG = False
+
 class SymbolTable:
     def __init__(self):
         # Represented as a dictionary
@@ -5,13 +7,14 @@ class SymbolTable:
 
     # Add a new entry to the symbol table
     def add(self, name, var_type, bounds, base_type):
-        print(f'\n+++ Adding {name} to symbol table with type {var_type}', end='')
+        if DEBUG:
+            print(f'\n+++ Adding {name} to symbol table with type {var_type}', end='')
 
-        # If array
-        if bounds and base_type:
-            print(' {} .. {} OF {}'.format(*bounds, base_type))
-        else:
-            print()
+            # If array
+            if bounds and base_type:
+                print(' {} .. {} OF {}'.format(*bounds, base_type))
+            else:
+                print()
             
         # If symbol is already defined in table
         if name in self.table:
