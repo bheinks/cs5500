@@ -21,9 +21,8 @@ class SymbolTable:
 
         return True
 
-    # Override "in" operator
-    def __contains__(self, key):
-        return key in self.table
+    def get(self, ident):
+        return self.table.get(ident)
 
 
 # Symbol table entry

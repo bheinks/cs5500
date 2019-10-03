@@ -41,10 +41,17 @@ class Parser:
         if not current_scope.add(name, var_type, bounds, base_type):
             self.error('Multiply defined identifier')
 
-    def search_id(self, ident):
-        # Verify that identifier exists in scope
-        if not any(ident in scope for scope in reversed(self.scopes)):
-            self.error('Undefined identifier')
+    # Search for identifier in all open scopes
+    def search_id(self, ident_name):
+        ident = None
+
+        for scope in reversed(self.scopes):
+            ident = scope.get(ident_name)
+
+            if ident:
+                break
+
+        return ident
 
     def n_prog_lbl(self):
         print_rule('N_PROGLBL', 'T_PROG')
@@ -463,22 +470,28 @@ class Parser:
     def n_expr(self):
         print_rule('N_EXPR', 'N_SIMPLEEXPR N_OPEXPR')
 
-        self.n_simple_expr()
-        self.n_op_expr()
+        simple_type = self.n_simple_expr()
+        op_type = self.n_op_expr()
+
+        return "BOOLEAN" if op_type else simple_type
 
     def n_op_expr(self):
         if self.token in ('T_LT', 'T_LE', 'T_NE', 'T_EQ', 'T_GT', 'T_GE'):
             print_rule('N_OPEXPR', 'N_RELOP N_SIMPLEEXPR')
 
             self.n_rel_op()
-            self.n_simple_expr()
+            simple_type = self.n_simple_expr()
+
+            return simple_type
         else:
             print_rule('N_OPEXPR', 'epsilon')
 
     def n_simple_expr(self):
         print_rule('N_SIMPLEEXPR', 'N_TERM N_ADDOPLST')
-        self.n_term()
+        term_type = self.n_term()
         self.n_add_op_lst()
+
+        return term_type
 
     def n_add_op_lst(self):
         if self.token in ('T_PLUS', 'T_MINUS', 'T_OR'):
@@ -493,8 +506,10 @@ class Parser:
     def n_term(self):
         print_rule('N_TERM', 'N_FACTOR N_MULTOPLST')
 
-        self.n_factor()
+        factor_type = self.n_factor()
         self.n_mult_op_lst()
+
+        return factor_type
 
     def n_mult_op_lst(self):
         if self.token in ('T_MULT', 'T_DIV', 'T_AND'):
@@ -511,26 +526,34 @@ class Parser:
             print_rule('N_FACTOR', 'N_SIGN N_VARIABLE')
 
             self.n_sign()
-            self.n_variable()
+            var_type = self.n_variable()
+
+            return var_type
         elif self.token in ('T_INTCONST', 'T_CHARCONST', 'T_TRUE', 'T_FALSE'):
             print_rule('N_FACTOR', 'N_CONST')
 
-            self.n_const()
+            const_type = self.n_const()
+
+            return const_type
         elif self.token == 'T_LPAREN':
             print_rule('N_FACTOR', 'T_LPAREN N_EXPR T_RPAREN')
 
             self.get_token()
-            self.n_expr()
+            expr_type = self.n_expr()
 
             if self.token == 'T_RPAREN':
                 self.get_token()
             else:
                 self.error('syntax error')
+
+            return expr_type
         elif self.token == 'T_NOT':
             print_rule('N_FACTOR', 'T_NOT N_FACTOR')
 
             self.get_token()
             self.n_factor()
+
+            return "BOOLEAN"
         else:
             self.error('syntax error')
 
@@ -569,11 +592,16 @@ class Parser:
         print_rule('N_VARIABLE', 'T_IDENT N_IDXVAR')
 
         if self.token == 'T_IDENT':
-            # Check that identifier is in scope
-            self.search_id(self.lexeme)
+            # Search for identifier in scope
+            ident = self.search_id(self.lexeme)
+
+            if not ident:
+                self.error('Unidentified identifier')
 
             self.get_token()
             self.n_idx_var()
+
+            return ident.var_type
         else:
             self.error('syntax error')
 
@@ -592,12 +620,21 @@ class Parser:
             print_rule('N_IDXVAR', 'epsilon')
 
     def n_const(self):
-        if self.token in ('T_INTCONST', 'T_CHARCONST'):
+        if self.token == 'T_INTCONST':
             print_rule('N_CONST', self.token)
             self.get_token()
+
+            return 'INTEGER'
+        elif self.token == 'T_CHARCONST':
+            print_rule('N_CONST', self.token)
+            self.get_token()
+
+            return 'CHAR'
         elif self.token in ('T_TRUE', 'T_FALSE'):
             print_rule('N_CONST', 'N_BOOLCONST')
             self.n_bool_const()
+
+            return 'BOOLEAN'
         else:
             self.error('syntax error')
 
