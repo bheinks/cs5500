@@ -7,6 +7,7 @@ from lexer import Lexer
 from symboltable import SymbolTable
 
 # Print debug output if true
+# TODO: Use integer to determine level of verbosity instead of boolean
 DEBUG = False
 
 class Parser:
@@ -47,15 +48,14 @@ class Parser:
 
     # Search for identifier in all open scopes
     def search_id(self, ident_name):
-        ident = None
-
         for scope in reversed(self.scopes):
             ident = scope.get(ident_name)
 
             if ident:
-                break
+                return ident
 
-        return ident
+        # If loop completes normally, no ident found
+        self.error('Unidentified identifier')
 
     def n_prog_lbl(self):
         print_rule('N_PROGLBL', 'T_PROG')
@@ -236,11 +236,14 @@ class Parser:
     def n_idx_range(self):
         print_rule('N_IDXRANGE', 'N_IDX T_DOTDOT N_IDX')
 
-        left_bound = self.n_idx()
+        left_bound = int(self.n_idx())
 
         if self.token == 'T_DOTDOT':
             self.get_token()
-            right_bound = self.n_idx()
+            right_bound = int(self.n_idx())
+
+            if left_bound > right_bound:
+                self.error('Start index must be less than or equal to end index of array')
 
             return left_bound, right_bound
         else:
@@ -333,8 +336,6 @@ class Parser:
     def n_stmt(self):
         if self.token == 'T_IDENT':
             ident = self.search_id(self.lexeme)
-            if not ident:
-                self.error('Unidentified identifier')
 
             if ident.var_type == 'PROCEDURE':
                 print_rule('N_STMT', 'N_PROCSTMT')
@@ -363,11 +364,21 @@ class Parser:
     def n_assign(self):
         print_rule('N_ASSIGN', 'N_VARIABLE T_ASSIGN N_EXPR')
 
-        self.n_variable()
+        var_type = self.n_variable()
+
+        if var_type == 'ARRAY':
+            self.error('Array variable must be indexed')
 
         if self.token == 'T_ASSIGN':
             self.get_token()
-            self.n_expr()
+            expr_type = self.n_expr()
+
+            if expr_type == 'ARRAY':
+                self.error('Array variable must be indexed')
+            elif expr_type == 'PROCEDURE':
+                self.error('Procedure/variable mismatch')
+            elif var_type != expr_type:
+                self.error('Expression must be of same type as variable')
         else:
             self.error('syntax error')
 
@@ -415,7 +426,10 @@ class Parser:
 
     def n_input_var(self):
         print_rule('N_INPUTVAR', 'N_VARIABLE')
-        self.n_variable()
+        var_type = self.n_variable()
+
+        if var_type not in ('INTEGER', 'CHAR'):
+            self.error('Input variable must be of type integer or char')
 
     def n_write(self):
         print_rule('N_WRITE', 'T_WRITE T_LPAREN N_OUTPUT N_OUTPUTLST T_RPAREN')
@@ -449,14 +463,20 @@ class Parser:
 
     def n_output(self):
         print_rule('N_OUTPUT', 'N_EXPR')
-        self.n_expr()
+        expr_type = self.n_expr()
+
+        if expr_type not in ('INTEGER', 'CHAR'):
+            self.error('Output expression must be of type integer or char')
 
     def n_condition(self):
         print_rule('N_CONDITION', 'T_IF N_EXPR T_THEN N_STMT N_ELSEPART')
 
         if self.token == 'T_IF':
             self.get_token()
-            self.n_expr()
+            expr_type = self.n_expr()
+
+            if expr_type != 'BOOLEAN':
+                self.error('Expression must be of type boolean')
 
             if self.token == 'T_THEN':
                 self.get_token()
@@ -481,7 +501,10 @@ class Parser:
 
         if self.token == 'T_WHILE':
             self.get_token()
-            self.n_expr()
+            expr_type = self.n_expr()
+
+            if expr_type != 'BOOLEAN':
+                self.error('Expression must be of type boolean')
 
             if self.token == 'T_DO':
                 self.get_token()
@@ -497,7 +520,13 @@ class Parser:
         simple_type = self.n_simple_expr()
         op_type = self.n_op_expr()
 
-        return "BOOLEAN" if op_type else simple_type
+        if op_type:
+            if op_type != simple_type:
+                self.error('Expressions must both be int, or both char, or both boolean')
+
+            return 'BOOLEAN'
+        else:
+            return simple_type
 
     def n_op_expr(self):
         if self.token in ('T_LT', 'T_LE', 'T_NE', 'T_EQ', 'T_GT', 'T_GE'):
@@ -539,9 +568,13 @@ class Parser:
         if self.token in ('T_MULT', 'T_DIV', 'T_AND'):
             print_rule('N_MULTOPLST', 'N_MULTOP N_FACTOR N_MULTOPLST')
 
-            self.n_mult_op()
-            self.n_factor()
-            self.n_mult_op_lst()
+            is_arithmatic = self.n_mult_op()
+            factor_type = self.n_factor()
+
+            if is_arithmatic and factor_type != 'INTEGER':
+                self.error('Expression must be of type integer')
+
+            return factor_type
         else:
             print_rule('N_MULTOPLST', 'epsilon')
 
@@ -549,8 +582,11 @@ class Parser:
         if self.token in ('T_PLUS', 'T_MINUS', 'T_IDENT'):
             print_rule('N_FACTOR', 'N_SIGN N_VARIABLE')
 
-            self.n_sign()
+            is_signed = self.n_sign()
             var_type = self.n_variable()
+
+            if is_signed and var_type != 'INTEGER':
+                self.error('Expression must be of type integer')
 
             return var_type
         elif self.token in ('T_INTCONST', 'T_CHARCONST', 'T_TRUE', 'T_FALSE'):
@@ -575,32 +611,54 @@ class Parser:
             print_rule('N_FACTOR', 'T_NOT N_FACTOR')
 
             self.get_token()
-            self.n_factor()
+            factor_type = self.n_factor()
+
+            if factor_type != 'BOOLEAN':
+                self.error('Expression must be of type boolean')
 
             return "BOOLEAN"
         else:
             self.error('syntax error')
 
+    # Return True if signed, False otherwise
     def n_sign(self):
         if self.token in ('T_PLUS', 'T_MINUS'):
             print_rule('N_SIGN', self.token)
             self.get_token()
+
+            return True
         else:
             print_rule('N_SIGN', 'epsilon')
 
+            return False
+
+    # Return True if arithmatic operator, False otherwise
     def n_add_op(self):
         print_rule('N_ADDOP', self.token)
 
-        if self.token in ('T_PLUS', 'T_MINUS', 'T_OR'):
+        if self.token in ('T_PLUS', 'T_MINUS'):
             self.get_token()
+
+            return True
+        elif self.token == 'T_OR':
+            self.get_token()
+
+            return False
         else:
             self.error('syntax error')
 
+    # Return True if arithmatic operator, False otherwise
     def n_mult_op(self):
         print_rule('N_MULTOP', self.token)
 
-        if self.token in ('T_MULT', 'T_DIV', 'T_AND'):
+        if self.token in ('T_MULT', 'T_DIV'):
             self.get_token()
+
+            return True
+        elif self.token == 'T_AND':
+            self.get_token()
+
+            return False
         else:
             self.error('syntax error')
 
@@ -620,25 +678,38 @@ class Parser:
             ident = self.search_id(self.lexeme)
 
             self.get_token()
-            self.n_idx_var()
+            if self.token == 'T_LBRACK' and ident.var_type != 'ARRAY':
+                self.error('Indexed variable must be of array type')
 
-            return ident.var_type
+            is_indexed = self.n_idx_var()
+
+            return ident.base_type if is_indexed else ident.var_type
         else:
             self.error('syntax error')
 
+    # Return True if indexed, False otherwise
     def n_idx_var(self):
         if self.token == 'T_LBRACK':
             print_rule('N_IDXVAR', 'T_LBRACK N_EXPR T_RBRACK')
 
             self.get_token()
-            self.n_expr()
+            expr_type = self.n_expr()
+
+            if expr_type == 'PROCEDURE':
+                self.error('Procedure/variable mismatch')
+            elif expr_type != 'INTEGER':
+                self.error('Index expression must be of type integer')
 
             if self.token == 'T_RBRACK':
                 self.get_token()
             else:
                 self.error('syntax error')
+
+            return True
         else:
             print_rule('N_IDXVAR', 'epsilon')
+
+            return False
 
     def n_const(self):
         if self.token == 'T_INTCONST':
