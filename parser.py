@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import inspect
 
 # Local imports
 from lexer import Lexer
@@ -15,6 +16,9 @@ class Parser:
         self.lexer = lexer      # Lexer instance
         self.scopes = []        # Stack of symbol tables
         self.temp_idents = []   # List of idents waiting to be added to symbol table
+        
+        self.label_num = 4;
+        self.procs = []
 
     def get_token(self):
         try:
@@ -39,12 +43,15 @@ class Parser:
 
         self.scopes.pop()
 
-    def new_id(self, name, var_type, bounds=None, base_type=None):
+    def new_id(self, name, var_type, bounds=None, base_type=None, label=None, level=None):
         current_scope = self.scopes[-1]
 
-        # If identifier doesn't exist in current scope, add it
-        if not current_scope.add(name, var_type, bounds, base_type):
+        # Add entry to current scope 
+        entry = current_scope.add(name, var_type, bounds, base_type, label, level) 
+        if not entry:
             self.error('Multiply defined identifier')
+
+        return entry
 
     # Search for identifier in all open scopes
     def search_id(self, ident_name):
@@ -55,7 +62,24 @@ class Parser:
                 return ident
 
         # If loop completes normally, no ident found
+        print(f'called by: {inspect.stack()[1].function}')
         self.error('Unidentified identifier')
+
+    def new_label(self):
+        label = f'L.{self.label_num}'
+        self.label_num += 1
+
+        return label
+
+    def set_offset(self, entry):
+        proc = self.procs[-1]
+        entry.offset = proc.frame_size
+
+        if entry.var_type == 'ARRAY':
+            left_bound, right_bound = entry.bounds
+            proc.frame_size += (right_bound-left_bound) + 1
+        else:
+            proc.frame_size += 1
 
     def n_prog_lbl(self):
         print_rule('N_PROGLBL', 'T_PROG')
@@ -75,7 +99,9 @@ class Parser:
 
         if self.token == 'T_IDENT':
             # Add program to global scope
-            self.new_id(self.lexeme, 'PROGRAM')
+            entry = self.new_id(self.lexeme, 'PROGRAM', label='L.3', level=0)
+            entry.frame_size = 20
+            self.procs.append(entry)
 
             self.get_token()
             if self.token == 'T_SCOLON':
@@ -99,6 +125,13 @@ class Parser:
         print_rule('N_BLOCK', 'N_VARDECPART N_PROCDECPART N_STMTPART')
 
         self.n_var_dec_part()
+
+        if len(self.procs) == 1:
+            print('  init L.0, 20, L.1, L.2, L.3')
+            print('L.0:')
+            print(f'  bss {self.procs[0].frame_size}')
+            print('L.2:')
+
         self.n_proc_dec_part()
         self.n_stmt_part()
 
@@ -148,7 +181,8 @@ class Parser:
 
             # Add all identifiers to scope
             for ident in self.temp_idents:
-                self.new_id(ident, var_type, bounds, base_type)
+                entry = self.new_id(ident, var_type, bounds, base_type, level=self.procs[-1].level)
+                self.set_offset(entry)
 
             # Reset temporary list of identifiers
             self.temp_idents = []
@@ -291,7 +325,12 @@ class Parser:
 
             if self.token == 'T_IDENT':
                 # Add new procedure to current scope
-                self.new_id(self.lexeme, 'PROCEDURE')
+                label = self.new_label()
+                level = self.procs[-1].level+1
+
+                entry = self.new_id(self.lexeme, 'PROCEDURE', label=label, level=level)
+                entry.frame_size = 0
+                self.procs.append(entry)
 
                 self.get_token()
 
@@ -306,7 +345,32 @@ class Parser:
 
     def n_stmt_part(self):
         print_rule('N_STMTPART', 'N_COMPOUND')
+
+        proc = self.procs[-1]
+
+        print(f'{proc.label}:')
+
+        if proc.var_type == 'PROCEDURE':
+            print(f'  save {proc.level}, 0')
+
+            if proc.frame_size > 0:
+                print(f'  asp {proc.frame_size}')
+
+        print("# Beginning of block's N_STMTPART")
+
         self.n_compound()
+
+        if proc.var_type == 'PROCEDURE':
+            if proc.frame_size > 0:
+                print(f'  asp {-proc.frame_size}')
+            print('  ji')
+        else:
+            print('  halt')
+            print('L.1:')
+            print('  bss 500')
+            print('  end')
+
+        self.procs.pop()
 
     def n_compound(self):
         print_rule('N_COMPOUND', 'T_BEGIN N_STMT N_STMTLST T_END')
@@ -338,6 +402,14 @@ class Parser:
             ident = self.search_id(self.lexeme)
 
             if ident.var_type == 'PROCEDURE':
+                for i in range(self.procs[-1].level, ident.level-1, -1):
+                    print(f'  push {i}, 0')
+
+                print(f'  js {ident.label}')
+
+                for i in range(ident.level, self.procs[-1].level+1):
+                    print(f'  pop {i}, 0')
+
                 print_rule('N_STMT', 'N_PROCSTMT')
                 self.n_proc_stmt()
             else:
@@ -364,6 +436,10 @@ class Parser:
     def n_assign(self):
         print_rule('N_ASSIGN', 'N_VARIABLE T_ASSIGN N_EXPR')
 
+        ident = self.search_id(self.lexeme)
+
+        print(f'  la {ident.offset}, {ident.level}')
+
         var_type = self.n_variable()
 
         if var_type == 'ARRAY':
@@ -371,7 +447,9 @@ class Parser:
 
         if self.token == 'T_ASSIGN':
             self.get_token()
+
             expr_type = self.n_expr()
+            print('  st')
 
             if expr_type == 'ARRAY':
                 self.error('Array variable must be indexed')
@@ -426,6 +504,16 @@ class Parser:
 
     def n_input_var(self):
         print_rule('N_INPUTVAR', 'N_VARIABLE')
+
+        ident = self.search_id(self.lexeme)
+
+        print(f'  la {ident.offset}, {ident.level}')
+        if ident.var_type == 'INTEGER':
+            print('  iread')
+        elif ident.var_type == 'CHAR':
+            print('  cread')
+        print('  st')
+
         var_type = self.n_variable()
 
         if var_type not in ('INTEGER', 'CHAR'):
@@ -463,9 +551,14 @@ class Parser:
 
     def n_output(self):
         print_rule('N_OUTPUT', 'N_EXPR')
+
         expr_type = self.n_expr()
 
-        if expr_type not in ('INTEGER', 'CHAR'):
+        if expr_type == 'INTEGER':
+            print('  iwrite')
+        elif expr_type == 'CHAR':
+            print('  cwrite')
+        else:
             self.error('Output expression must be of type integer or char')
 
     def n_condition(self):
@@ -475,13 +568,23 @@ class Parser:
             self.get_token()
             expr_type = self.n_expr()
 
+            else_label = self.new_label()
+            post_label = self.new_label()
+            print(f'  jf {else_label}')
+
             if expr_type != 'BOOLEAN':
                 self.error('Expression must be of type boolean')
 
             if self.token == 'T_THEN':
                 self.get_token()
                 self.n_stmt()
+
+                print(f'  jp {post_label}')
+                print(f'{else_label}:')
+
                 self.n_else_part()
+
+                print(f'{post_label}:')
             else:
                 self.error('syntax error')
         else:
@@ -501,6 +604,10 @@ class Parser:
 
         if self.token == 'T_WHILE':
             self.get_token()
+
+            top_label = self.new_label()
+            print(f'{top_label}:')
+
             expr_type = self.n_expr()
 
             if expr_type != 'BOOLEAN':
@@ -508,7 +615,14 @@ class Parser:
 
             if self.token == 'T_DO':
                 self.get_token()
+
+                post_label = self.new_label()
+                print(f'  jf {post_label}')
+
                 self.n_stmt()
+
+                print(f'  jp {top_label}')
+                print(f'{post_label}:')
             else:
                 self.error('syntax error')
         else:
@@ -518,12 +632,14 @@ class Parser:
         print_rule('N_EXPR', 'N_SIMPLEEXPR N_OPEXPR')
 
         simple_type = self.n_simple_expr()
-        op_type = self.n_op_expr()
+        op_info = self.n_op_expr()
 
-        if op_type:
+        if op_info:
+            op_type, op = op_info
             if op_type != simple_type:
                 self.error('Expressions must both be int, or both char, or both boolean')
 
+            print(f'  .{op[2:].lower()}.')
             return 'BOOLEAN'
         else:
             return simple_type
@@ -532,10 +648,10 @@ class Parser:
         if self.token in ('T_LT', 'T_LE', 'T_NE', 'T_EQ', 'T_GT', 'T_GE'):
             print_rule('N_OPEXPR', 'N_RELOP N_SIMPLEEXPR')
 
-            self.n_rel_op()
+            op = self.n_rel_op()
             simple_type = self.n_simple_expr()
 
-            return simple_type
+            return simple_type, op
         else:
             print_rule('N_OPEXPR', 'epsilon')
 
@@ -550,9 +666,10 @@ class Parser:
         if self.token in ('T_PLUS', 'T_MINUS', 'T_OR'):
             print_rule('N_ADDOPLST', 'N_ADDOP N_TERM N_ADDOPLST')
 
-            self.n_add_op()
+            op = self.n_add_op()
             self.n_term()
             self.n_add_op_lst()
+            print(f'  {op}')
         else:
             print_rule('N_ADDOPLST', 'epsilon')
 
@@ -567,9 +684,12 @@ class Parser:
     def n_mult_op_lst(self):
         if self.token in ('T_MULT', 'T_DIV', 'T_AND'):
             print_rule('N_MULTOPLST', 'N_MULTOP N_FACTOR N_MULTOPLST')
+            op = self.token
 
             is_arithmatic = self.n_mult_op()
             factor_type = self.n_factor()
+
+            print(f'  {op[2:].lower()}')
 
             if is_arithmatic and factor_type != 'INTEGER':
                 self.error('Expression must be of type integer')
@@ -583,10 +703,18 @@ class Parser:
             print_rule('N_FACTOR', 'N_SIGN N_VARIABLE')
 
             is_signed = self.n_sign()
+
+            ident = self.search_id(self.lexeme)
+            print(f'  la {ident.offset}, {ident.level}')
+            print('  deref')
+
             var_type = self.n_variable()
 
-            if is_signed and var_type != 'INTEGER':
-                self.error('Expression must be of type integer')
+            if is_signed:
+                if var_type != 'INTEGER':
+                    self.error('Expression must be of type integer')
+
+                print('  neg')
 
             return var_type
         elif self.token in ('T_INTCONST', 'T_CHARCONST', 'T_TRUE', 'T_FALSE'):
@@ -613,6 +741,8 @@ class Parser:
             self.get_token()
             factor_type = self.n_factor()
 
+            print('  not')
+
             if factor_type != 'BOOLEAN':
                 self.error('Expression must be of type boolean')
 
@@ -636,14 +766,16 @@ class Parser:
     def n_add_op(self):
         print_rule('N_ADDOP', self.token)
 
-        if self.token in ('T_PLUS', 'T_MINUS'):
+        if self.token == 'T_PLUS':
             self.get_token()
 
-            return True
+            return 'add'
+        elif self.token == 'T_MINUS':
+            self.get_token()
+            
+            return 'sub'
         elif self.token == 'T_OR':
             self.get_token()
-
-            return False
         else:
             self.error('syntax error')
 
@@ -666,7 +798,10 @@ class Parser:
         print_rule('N_RELOP', self.token)
 
         if self.token in ('T_LT', 'T_LE', 'T_NE', 'T_EQ', 'T_GT', 'T_GE'):
+            op = self.token
             self.get_token()
+
+            return op
         else:
             self.error('syntax error')
 
@@ -678,11 +813,12 @@ class Parser:
             ident = self.search_id(self.lexeme)
 
             self.get_token()
-            if self.token == 'T_LBRACK' and ident.var_type != 'ARRAY':
+            if ident.var_type != 'ARRAY' and self.token == 'T_LBRACK':
                 self.error('Indexed variable must be of array type')
 
             is_indexed = self.n_idx_var()
 
+            # Return base type of array if variable is indexed
             return ident.base_type if is_indexed else ident.var_type
         else:
             self.error('syntax error')
@@ -714,11 +850,13 @@ class Parser:
     def n_const(self):
         if self.token == 'T_INTCONST':
             print_rule('N_CONST', self.token)
+            print(f'  lc {self.lexeme}')
             self.get_token()
 
             return 'INTEGER'
         elif self.token == 'T_CHARCONST':
             print_rule('N_CONST', self.token)
+            print(f'  lc {ord(self.lexeme[1])}')
             self.get_token()
 
             return 'CHAR'
@@ -733,7 +871,11 @@ class Parser:
     def n_bool_const(self):
         print_rule('N_BOOLCONST', self.token)
 
-        if self.token in ('T_TRUE', 'T_FALSE'):
+        if self.token == 'T_TRUE':
+            print('  lc 1')
+            self.get_token()
+        elif self.token == 'T_FALSE':
+            print('  lc 0')
             self.get_token()
         else:
             self.error('syntax error')
@@ -750,8 +892,6 @@ def main(input_filename):
 
     parser.get_token() # Initialize with first token
     parser.n_prog()
-
-    print('\n---- Completed parsing ----')
 
 
 if __name__ == '__main__':

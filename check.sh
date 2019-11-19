@@ -8,7 +8,7 @@ OUTPUT="./output"
 mkdir -p $OUTPUT
 
 # Where to find the expected output
-EXPECTED="./expected"
+EXPECTED="./sample_oal"
 
 # Where to place generated diffs
 REPORTS="./reports"
@@ -32,7 +32,7 @@ for f in $INPUT/*; do
     ${EXEC} "$INPUT/$filename" > "$OUTPUT/$filename.out"
 
     # run diff
-    diff -yi "$OUTPUT/$filename.out" "$EXPECTED/$filename.out" > "$REPORTS/$filename"
+    diff -yi "$OUTPUT/$filename.out" "$EXPECTED/$testname.oal" > "$REPORTS/$filename"
 
     if [ $? -ne 0 ]; then
         fails=$[ $fails + 1 ]
