@@ -436,12 +436,7 @@ class Parser:
     def n_assign(self):
         print_rule('N_ASSIGN', 'N_VARIABLE T_ASSIGN N_EXPR')
 
-        ident = self.search_id(self.lexeme)
-
-        print(f'  la {ident.offset}, {ident.level}')
-
         var_type = self.n_variable()
-
         if var_type == 'ARRAY':
             self.error('Array variable must be indexed')
 
@@ -505,19 +500,15 @@ class Parser:
     def n_input_var(self):
         print_rule('N_INPUTVAR', 'N_VARIABLE')
 
-        ident = self.search_id(self.lexeme)
-
-        print(f'  la {ident.offset}, {ident.level}')
-        if ident.var_type == 'INTEGER':
-            print('  iread')
-        elif ident.var_type == 'CHAR':
-            print('  cread')
-        print('  st')
-
         var_type = self.n_variable()
-
-        if var_type not in ('INTEGER', 'CHAR'):
+        if var_type == 'INTEGER':
+            print('  iread')
+        elif var_type == 'CHAR':
+            print('  cread')
+        else:
             self.error('Input variable must be of type integer or char')
+
+        print('  st')
 
     def n_write(self):
         print_rule('N_WRITE', 'T_WRITE T_LPAREN N_OUTPUT N_OUTPUTLST T_RPAREN')
@@ -703,12 +694,9 @@ class Parser:
             print_rule('N_FACTOR', 'N_SIGN N_VARIABLE')
 
             is_signed = self.n_sign()
-
-            ident = self.search_id(self.lexeme)
-            print(f'  la {ident.offset}, {ident.level}')
-            print('  deref')
-
             var_type = self.n_variable()
+
+            print('  deref')
 
             if is_signed:
                 if var_type != 'INTEGER':
@@ -813,8 +801,13 @@ class Parser:
             ident = self.search_id(self.lexeme)
 
             self.get_token()
-            if ident.var_type != 'ARRAY' and self.token == 'T_LBRACK':
-                self.error('Indexed variable must be of array type')
+            if ident.var_type != 'ARRAY':
+                if self.token == 'T_LBRACK':
+                    self.error('Indexed variable must be of array type')
+
+                print(f'  la {ident.offset}, {ident.level}')
+            else:
+                print(f'  la {ident.offset-ident.bounds[0]}, {ident.level}')
 
             is_indexed = self.n_idx_var()
 
@@ -830,6 +823,8 @@ class Parser:
 
             self.get_token()
             expr_type = self.n_expr()
+
+            print('  add')
 
             if expr_type == 'PROCEDURE':
                 self.error('Procedure/variable mismatch')
